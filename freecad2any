@@ -11,16 +11,13 @@
 # License: GPLv2
 #
 # History:
+# 2021/08/16: 0.0.4: adding brep export as well
 # 2021/08/13: 0.0.3: 3mj export based on importOBJ.py (import & export), refined search for FreeCAD installation basis
 # 2021/08/12: 0.0.2: using python3 and trying to 'import FreeCAD' instead, somewhat works, incl. 3mj format
 # 2021/08/08: 0.0.1: start, doesn't work yet
 
 APPNAME = 'FreeCAD2Any'
-VERSION = '0.0.3'
-
-#FREECADPATH = '/snap/bin/freecad/lib'
-#FREECADPATH = '/snap/freecad/19/opt/local/FreeCAD-0.18/lib/'
-FREECADPATH = '/snap/freecad/22/opt/local/FreeCAD-0.19/lib/'     
+VERSION = '0.0.4'
 
 import sys
 import re
@@ -29,7 +26,7 @@ import json
 
 if not os.path.exists('/usr/lib/freecad'):   # -- we are installed not ordinary, but as a snap or so (what a pain)
    # -- this is a hack, but there is no nice way to resolve this (we don't really know where FreeCAD really lives/is-installed)
-   if not 'FreeCAD' in os.environ["LD_LIBRARY_PATH"]:
+   if not 'LD_LIBRARY_PATH' in os.environ or not 'FreeCAD' in os.environ["LD_LIBRARY_PATH"]:
       set = 0
       for d in ['/usr/lib/freecad','/usr/local/lib/freecad']:     # -- ordinary installed?
          if os.path.exists(d):
@@ -37,6 +34,7 @@ if not os.path.exists('/usr/lib/freecad'):   # -- we are installed not ordinary,
             break
       if set >= 0:                                                # -- not ordinary installed, search as snap
          for d in ['/snap/freecad/current','/snap/freecad/24','/snap/freecad/22','/snap/freecad/20','/snap/freecad/19']:
+            if not 'LD_LIBRARY_PATH' in os.environ: os.environ['LD_LIBRARY_PATH'] = ''
             if os.path.exists(d+"/opt/local/FreeCAD-0.19/lib"):
                os.environ["LD_LIBRARY_PATH"] += ":"+d+"/opt/local/FreeCAD-0.19/lib"
                set = set+1
@@ -57,6 +55,12 @@ if not os.path.exists('/usr/lib/freecad'):   # -- we are installed not ordinary,
             print("ERR: didn't find FreeCAD installation locally or as snap, abort.")
             sys.exit(-1)
       
+FREECADPATH = ''
+
+for d in ['/snap/freecad/current','/snap/freecad/24','/snap/freecad/22','/snap/freecad/20','/snap/freecad/19']:
+   if os.path.exists(d+"/opt/local/FreeCAD-0.19/lib"):
+      FREECADPATH = d+"/opt/local/FreeCAD-0.19/lib"
+
 sys.path.append(FREECADPATH)
 
 import FreeCAD
@@ -93,27 +97,36 @@ def export(fn,fno,fmt):
    #print(list_methods(App.ActiveDocument))
    #print(list_methods(FreeCAD))
    #print(list_methods(App))
-   if fmt == 'fc' or fmt == 'fcstd' or fmt == 'FCStd': # or fmt == 'png' or fmt == 'jpg':
+   if fmt == 'fc' or fmt == 'fcstd' or fmt == 'FCStd': # or fmt == 'png' or fmt == 'jpg': # -- saveAs "cube.png" saves "cube.png.FCStd"
       print("INF: => exporting (%s) %s" % (fmt,fno))
       if os.path.exists(fno):
          os.remove(fno)                   # -- make sure it's removed if it exists
       App.ActiveDocument.saveAs(fno)
       return 0
+   elif 0 and fmt == 'png' or fmt == 'jpg':     # -- future: see https://wiki.freecadweb.org/Std_ViewScreenShot (requires 'Gui')
+      print("INF: => exporting (%s) %s" % (fmt,fno))
+      if os.path.exists(fno):
+         os.remove(fno)                   # -- make sure it's removed if it exists
+      App.ActiveDocument.ActiveView.saveImage(fno,1024,1024,'Current')
+      return 0
+   
    if(conf['verbose'] > 1):
       print("INF: import result",result)
    for o in App.ActiveDocument.Objects:
       # find root object and export the shape
       if len(o.InList)==0:
          print("INF: => exporting (%s) %s" % (fmt,fno))
-         print(list_methods(o))
+         #print(list_methods(o))
          if fmt=="step":   
             o.Shape.exportStep(fno)
          elif fmt=="iges": 
             o.Shape.exportIges(fno)
          elif fmt=="stl":
             o.Shape.exportStl(fno)
+         elif fmt=="brep":
+            o.Shape.exportBrep(fno)
          #elif fmt=="png":
-         #   o.Shape.exportPng(fno)
+         #   o.Shape.exportPng(fno)             # -- doesn't exist
          else:
             exportMesh(o,fno,fmt)
          return 0
@@ -263,14 +276,13 @@ def readJSON(fn):
 def writeJSON(fn,d,opts={}):
    writeFile(fn,toJSON(d,opts))
 
-
 def help():
-   print("""%s %s USAGE: [<options>] [file.FCStd ...]
+   print(f"""{APPNAME} {VERSION} USAGE: [<options>] [file.FCStd ...]
    options:
-      --verbose            increase verbosity (default: %d)
+      --verbose            increase verbosity (default: {conf['verbose']})
       -v or -vvv              "       "
       --version            display version and exit
-      --format=<fmt>       set format (default: %s)
+      --format=<fmt>       set format (default: {conf['format']})
       -f <fmt>                "       "
                               %s 
       --output=<fn>        set output filename
@@ -283,7 +295,7 @@ def help():
       freecad2any -f step Cube.FCStd
       freecad2any -o cube.step Cube.FCStd
       freecad2step Cube.FCStd
-""" % (APPNAME, VERSION, conf['verbose'],conf['format'], ", ".join(fmts.keys()) ))
+""" % (", ".join(fmts.keys()) ))
 
 #print("startup",sys.argv)
 
@@ -295,7 +307,7 @@ s2l = { 'o': 'output', 'v': 'verbose', 'f': 'format' }      # -- short keys
 a2a = { 'o': 1, 'f': 1 }                     # -- additional argument
 conf = { 'format': 'stl', 'verbose': 0 }     # -- defaults
 fs = [ ]
-fmts = { "iges": 1, "step": 1, "obj": 1, "stl": 1, "amf": 1, "3mj": 1, 
+fmts = { "iges": 1, "step": 1, "brep": 1, "obj": 1, "stl": 1, "amf": 1, "3mj": 1, 
    "vrml": 1, "wrl": 1, "bdf": 1, "brep": 1, "brp": 1, "cnc": 1, "glb": 1, 
    "gltf": 1, "med": 1, "off": 1, "ply": 1, "pov": 1, "scad": 1, "x3d": 1 }
 

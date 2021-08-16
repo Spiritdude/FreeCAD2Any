@@ -1,6 +1,6 @@
 APPNAME = FreeCAD2Any
 BINNAME = freecad2any
-VERSION = 0.0.3
+VERSION = 0.0.4
 
 all::
 	@echo "make build install deinstall tests clean"
@@ -19,10 +19,11 @@ install-user::
 	ln -f -s freecad2any freecad2obj
 	ln -f -s freecad2any freecad23mj
 	ln -f -s freecad2any freecad2amf
+	ln -f -s freecad2any freecad2brep
 	cp freecad2* ~/bin/
 
 deinstall::
-	rm -f ~/bin/freecad2{iges,step,stl,obj,3mj,amf,any}
+	rm -f ~/bin/freecad2{iges,step,stl,obj,3mj,amf,brep,any}
 
 tests::
 	cd tests && $(MAKE)
