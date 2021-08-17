@@ -3,9 +3,12 @@
 Convert FreeCAD's FCStd to other 3d formats:
    iges, step, obj, stl, amf, 3mj, vrml, wrl, bdf, brep, brp, cnc, glb, gltf, med, off, ply, pov, scad, x3d
 
+## Platform
+- Linux/Ubuntu 20.04 LTS
+
 ## Requirements
 - FreeCAD 0.19 or higher
-- recommended: install FreeCAD via snap 
+- recommended: install FreeCAD via snap `sudo snap install freecad`
    
 ## Download
 ```
@@ -40,7 +43,4 @@ FreeCAD2Any 0.0.2 USAGE: [<options>] [file.FCStd ...]
 
 ```
 
-## Examples
-
-See also at [FreeCAD2Any](https://xyzdims.com/...)
 
