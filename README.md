@@ -2,6 +2,10 @@
 
 Convert FreeCAD's FCStd to other 3d formats:
    iges, step, obj, stl, amf, 3mj, vrml, wrl, bdf, brep, brp, cnc, glb, gltf, med, off, ply, pov, scad, x3d
+
+## Requirements
+- FreeCAD 0.19 or higher
+- recommended: install FreeCAD via snap 
    
 ## Download
 ```

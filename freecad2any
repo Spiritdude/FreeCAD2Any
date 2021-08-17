@@ -4,9 +4,9 @@
 #  written by Rene K. Mueller <spiritdude@gmail.com>
 #
 # Description:
-#  Convert FCStd (fcstd) into iges, step, stl, obj, off, amf on the command-line.
+#  Convert FCStd (fcstd) into iges, step, brep, stl, obj, off, amf on the command-line.
 # Todo:
-#  Convert backward from step, iges, stl, etc to FCStd
+#  Convert backward from step, iges, brep, stl, etc to FCStd
 #
 # License: GPLv2
 #
@@ -54,12 +54,17 @@ if not os.path.exists('/usr/lib/freecad'):   # -- we are installed not ordinary,
          else:
             print("ERR: didn't find FreeCAD installation locally or as snap, abort.")
             sys.exit(-1)
-      
+
 FREECADPATH = ''
 
-for d in ['/snap/freecad/current','/snap/freecad/24','/snap/freecad/22','/snap/freecad/20','/snap/freecad/19']:
-   if os.path.exists(d+"/opt/local/FreeCAD-0.19/lib"):
-      FREECADPATH = d+"/opt/local/FreeCAD-0.19/lib"
+if 'LD_LIBRARY_PATH' in os.environ:
+   for d in ['/snap/freecad/current','/snap/freecad/24','/snap/freecad/22','/snap/freecad/20','/snap/freecad/19']:
+      if os.path.exists(d+"/opt/local/FreeCAD-0.19/lib"):
+         FREECADPATH = d+"/opt/local/FreeCAD-0.19/lib"
+else:
+   for d in ['/usr/lib/freecad','/usr/local/lib/freecad']:
+      if os.path.exists(d+"/lib"):
+         FREECADPATH = d+"/lib"
 
 sys.path.append(FREECADPATH)
 
@@ -67,7 +72,7 @@ import FreeCAD
 import Import
 import Part
 import Mesh
-import MeshPart
+import MeshPart            # 0.18.4 fails here, we need 0.19 at least
 
 def preg_match(rex,s,m,opts={}):
    _m = re.search(rex,s)
@@ -82,6 +87,9 @@ def list_methods(obj):
    return [method_name for method_name in dir(obj) if callable(getattr(obj, method_name))]
 
 def export(fn,fno,fmt):
+   if not os.path.exists(fn):
+      sys.exit(f"ERR: '{fn}' not accessible, abort.")
+      
    print("INF: importing %s ..." % fn)
    if 0:
       print("INF: loading",fn)
@@ -91,9 +99,8 @@ def export(fn,fno,fmt):
       print(fno,"export done")
       sys.exit(0)
 
-   #result = Import.open(fn)
    result = FreeCAD.loadFile(fn)
-   result = App.ActiveDocument.Objects
+   obj = App.ActiveDocument.Objects
    #print(list_methods(App.ActiveDocument))
    #print(list_methods(FreeCAD))
    #print(list_methods(App))
@@ -112,6 +119,7 @@ def export(fn,fno,fmt):
    
    if(conf['verbose'] > 1):
       print("INF: import result",result)
+
    for o in App.ActiveDocument.Objects:
       # find root object and export the shape
       if len(o.InList)==0:
@@ -134,49 +142,13 @@ def export(fn,fno,fmt):
    print("ERR: no root object found to export");
    return -1
 
-   shape_with_colors = result[0]
-   shape_with_colors = result
-   
-   # get the first part feature and its colors
-   shape = shape_with_colors[0]
-   color = shape_with_colors[1]
-   print("shape",shape)
-   print("color",color)
-   
-   # color is per face
-   if len(shape.Shape.Faces) == len(color):
-      # Tessellate the shape and create a mesh segment for each face
-      mesh = MeshPart.meshFromShape(Shape=shape.Shape, Segments=True, LinearDeflection=0.1)
-      # determine the colors for each triangle
-      mesh_colors = [color[0]] * mesh.CountFacets
-      for i in range(len(color)):
-         segm = mesh.getSegment(i)
-         for j in segm:
-            mesh_colors[j] = color[i]
-   
-      # Export OBJ mesh with colors
-      mesh.write(Filename="out.obj", Format="OBJ", Material=mesh_colors)
-      #mesh.write(Filename="out.wrl", Format="WRL", Material=mesh_colors)
-   
-   print("written","out.obj")
-
 def exportMesh(shape,fno,fmt):
    mesh = MeshPart.meshFromShape(Shape=shape.Shape, Segments=True, LinearDeflection=0.1)
    if(fmt=="3mj"):
-      export3MJ(mesh,fno)
+      export3MJ(mesh,fno)              # -- dedicated export
    else:
-      Mesh.export([shape],fno)
+      Mesh.export([shape],fno)         # -- using built-in Mesh.export
    return
-   # determine the colors for each triangle
-   mesh_colors = [color[0]] * mesh.CountFacets
-   for i in range(len(color)):
-      segm = mesh.getSegment(i)
-      for j in segm:
-         mesh_colors[j] = color[i]
-   if fmt=="obj":
-       mesh.write(Filename="out.obj", Format="OBJ", Material=mesh_colors)
-   elif fmt=="wrl":
-      mesh.write(Filename="out.wrl", Format="WRL", Material=mesh_colors)
 
 def getIndices(shape,offset):       # -- taken from https://github.com/FreeCAD/FreeCAD/blob/master/src/Mod/Arch/importOBJ.py with adjustments to return actual arrays not strings
     p = 4
@@ -257,9 +229,6 @@ def toJSON(s,opts={}):
    return json.dumps(s,sort_keys=True,indent=3) if 'pretty' in opts else json.dumps(s)
 
 def readFile(fn,opts={}):
-   # -- TODO: 
-   #    - http/https for remote access
-   #    - block, line callbacks
    h = open(fn,'r')
    c = h.read()
    h.close()
@@ -278,6 +247,8 @@ def writeJSON(fn,d,opts={}):
 
 def help():
    print(f"""{APPNAME} {VERSION} USAGE: [<options>] [file.FCStd ...]
+   using FreeCAD {FREECADPATH}
+   
    options:
       --verbose            increase verbosity (default: {conf['verbose']})
       -v or -vvv              "       "
@@ -297,10 +268,8 @@ def help():
       freecad2step Cube.FCStd
 """ % (", ".join(fmts.keys()) ))
 
-#print("startup",sys.argv)
-
 if __name__ != "__main__":       # -- we are not a script (as it should be)
-   print("ERR: use freecad2any as a standalone app, abort")
+   print("ERR: use freecad2any as a standalone app, abort.")
    sys.exit(0)
 
 s2l = { 'o': 'output', 'v': 'verbose', 'f': 'format' }      # -- short keys
@@ -316,7 +285,7 @@ if(preg_match(r'freecad2(\w+)',sys.argv[0],m) and m[1] != 'any'):       # -- are
    conf['format'] = m[1]
 
 i = 1
-while(i<len(sys.argv)):             # -- preparse all arguments
+while(i<len(sys.argv)):                                      # -- preparse all arguments
    m = []
    fn = sys.argv[i]
    if(preg_match(r'^-(\w+)$',fn,m)):                         # -<k>
@@ -339,7 +308,7 @@ while(i<len(sys.argv)):             # -- preparse all arguments
    i = i+1
 
 if 'version' in conf:
-   print("%s %s" % (APPNAME, VERSION))
+   print("%s %s (%s)" % (APPNAME, VERSION, FREECADPATH))
    sys.exit(0)
    
 if len(fs) <= 0 or 'help' in conf:
@@ -355,7 +324,6 @@ for fn in fs:
       if preg_match(r'\.(\w+)',fno,m):
          fmt = m[1]
       else:
-         sys.exit('bad filename <%s>, cannot derive format from it, abort.' % (fno))
-   #print(fmt,fno)
+         sys.exit('ERR: bad filename <%s>, cannot derive format from it, abort.' % (fno))
    export(fn,fno,fmt)
 
